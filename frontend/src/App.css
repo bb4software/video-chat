@@ -4,7 +4,7 @@
 }
 
 .myId {
-	margin-right: 5rem;
+	margin-right: 2rem;
 	border-radius: 5px;
 	background: #c9d6ff; /* fallback for old browsers */
 	background: -webkit-linear-gradient(to right, #e2e2e2, #c9d6ff); /* Chrome 10-25, Safari 5.1-6 */
@@ -30,7 +30,7 @@
 	grid-template-columns: 1fr 1fr;
 	justify-content: center;
 	align-content: center;
-	margin-top: 10rem;
+	margin-top: 5rem;
 	margin-left: 10rem;
 }
 
