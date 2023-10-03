@@ -7,8 +7,8 @@ let operatorId = null;
 
 const io = require("socket.io")(server, {
 	cors: {
-		//origin: "http://localhost:3000",
-		origin: "https://chat.bbfour.me",
+		origin: "http://localhost:3000",
+		//origin: "https://chat.bbfour.me",
 		methods: [ "GET", "POST" ]
 	}
 })
@@ -21,27 +21,34 @@ io.on("connection", (socket) => {
 		socket.broadcast.emit("callEnded")
 	})
 
-	socket.on("callUser", (data) => {
-		io.to(data.userToCall).emit("callUser", { signal: data.signalData, from: data.from, name: data.name })
+	socket.on("callOperator", (data) => {
+		console.log("Receiving callOperator() ", { signal: data.signalData.type, from: data.from, name: data.name })
+		io.to(data.userToCall).emit("callFromKiosk", { signal: data.signalData, from: data.from, name: data.name })
 	})
 
 	socket.on("answerCall", (data) => {
-		io.to(data.to).emit("callAccepted", data.signal)
+		console.log("socket.on.answerCall ", data.signal?.type);
+		io.to(data.to).emit("connectionAccepted", data.signal)
 	})
 
 	socket.on("callEnded", (data) => {
-		console.log("callEnded: ", data);
+		console.log("socket.on.callEnded ", data);
 		io.to(data.callerId).emit("callEnded", data)
 	})
 
 	socket.on("setOperatorId", (data) => {
-		console.log(data);
+		console.log("socket.on.setOperatorId ", data);
 		operatorId = data.operatorId;
-		socket.emit("setOperatorId", operatorId);
+		//socket.emit("setOperatorId", operatorId);
+		socket.broadcast.emit("updateOperatorId", operatorId)
+		console.log("Emit to all the new operator: ", operatorId);
 	})
 
 	if(operatorId !== null){
-		socket.emit("setOperatorId", operatorId);
+		console.log("Emit updateOperatorId -> ", operatorId);
+		socket.emit("updateOperatorId", operatorId);
+	}else{
+		console.log("Operator is null ", {operatorId})
 	}
 })
 

@@ -1,9 +1,8 @@
 import Button from "@material-ui/core/Button"
-import IconButton from "@material-ui/core/IconButton"
-import TextField from "@material-ui/core/TextField"
-import PhoneIcon from "@material-ui/icons/Phone"
+//import IconButton from "@material-ui/core/IconButton"
+//import PhoneIcon from "@material-ui/icons/Phone"
 import React, { useEffect, useRef, useState } from "react"
-import {useLocation} from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import Peer from "simple-peer"
 import io from "socket.io-client"
 import "./App.css"
@@ -20,27 +19,32 @@ const selectStyle = {
 	flex: 'auto'
 };
 
-const socket = io.connect('https://socket.bbfour.me')
+//const socket = io.connect('https://socket.bbfour.me')
 //const socket = io.connect('http://localhost:4000');
+const URL = process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:4000';
+const socket = io(URL, {
+	autoConnect: false
+  });
 
 function App() {
-	const location = useLocation();
-	const role = location.pathname === '/operator' ? 'operator' : 'kiosk';
+	const location = useLocation()
+	const role = location.pathname === '/operator' ? 'operator' : 'kiosk'
 
-	const [videoDeviceId, setVideoDeviceId] = React.useState(null);
-	const [audioDeviceId, setAudioDeviceId] = React.useState(null);
-	const [devices, setDevices] = React.useState(null);
+	const [videoDeviceId, setVideoDeviceId] = React.useState(null)
+	const [audioDeviceId, setAudioDeviceId] = React.useState(null)
+	const [devices, setDevices] = React.useState(null)
 	const [me, setMe] = useState("")
 	const [stream, setStream] = useState()
 	const [receivingCall, setReceivingCall] = useState(false)
 	const [caller, setCaller] = useState("")
 	const [callerSignal, setCallerSignal] = useState()
-	const [callAccepted, setCallAccepted] = useState(false)
-	const [idToCall, setIdToCall] = useState("")
-	const [callEnded, setCallEnded] = useState(false)
+	const [connectionAccepted, setConnectionAccepted] = useState(false)
+	const [callEnded, setCallEnded] = useState(true)
 	const myVideo = useRef()
 	const userVideo = useRef()
-	const connectionRef = useRef()
+	const idToCall = useRef()
+	const operatorPeerRef = useRef()
+	const kioskPeerRef = useRef()
 
 	const listDevices = async () => {
 		const devices = await navigator.mediaDevices?.enumerateDevices?.();
@@ -65,41 +69,58 @@ function App() {
 		}
 	};
 
+
 	useEffect(() => {
-		console.log("ROLE: ", role);
+		console.log("Checking role in useEffect() role: ", role, {callEnded}, {connectionAccepted});
 
-		listDevices().then((devices) => setDevices(devices));
+		const setup = async () => {
+			listDevices().then((devices) => setDevices(devices));
 
-		navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
-			setStream(stream)
-			myVideo.current.srcObject = stream
+			const myStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true})
+			const audioTrack = myStream.getAudioTracks()[0]
+			audioTrack.enabled = false
 
-			console.log("Setting stream to: ", stream);
-		})
-
-		socket.on("me", (id) => {
-			console.log("ME: ", id);
-			setMe(id)
-
-			if(role === 'operator'){
-				socket.emit("setOperatorId", {
-					operatorId: id,
-				});
+			if(role === 'kiosk' && connectionAccepted){
+				const audioTrack = kioskPeerRef.current.streams[0].getAudioTracks()[0]
+				audioTrack.enabled = !callEnded
 			}
-		})
 
-		socket.on("setOperatorId", (id) => {
-			console.log("The operator Id: ", id);
-			setIdToCall(id);
-		})
+			if(role === 'operator' && connectionAccepted){
+				const audioTrack = operatorPeerRef.current.streams[0].getAudioTracks()[0]
+				audioTrack.enabled = !callEnded
+				console.log("Operator audio: ", audioTrack.enabled);
+			}
 
-		socket.on("callUser", (data) => {
-			console.log("callUser!! ", data);
-			console.log({callAccepted});
-			setReceivingCall(true)
-			setCaller(data.from)
-			setCallerSignal(data.signal)
-		})
+			setStream(myStream)
+			myVideo.current.srcObject = myStream
+			
+			//Connect until we have the stream
+			socket.connect()
+
+			socket.on("updateOperatorId", (operatorId) => {
+				if (role === 'kiosk') {
+					idToCall.current = operatorId;
+				}
+			});
+
+			socket.on("me", (id) => {
+				setMe(id)
+
+				if (role === 'operator') {
+					socket.emit("setOperatorId", {
+						operatorId: id,
+					});
+				}
+			})
+
+			socket.on("callFromKiosk", (data) => {
+				setReceivingCall(true)
+				setCaller(data.from)
+				setCallerSignal(data.signal)
+			})
+		}
+
+		setup()
 
 		const handleDeviceChange = () => {
 			console.log("Calling handleDeviceChange() ", audioDeviceId, videoDeviceId);
@@ -116,77 +137,45 @@ function App() {
 			handleDeviceChange();
 		}
 
-	}, [videoDeviceId, audioDeviceId, role, receivingCall, callAccepted])
+	}, [videoDeviceId, audioDeviceId, role, receivingCall, callEnded, connectionAccepted])
 
-	const callUser = (id) => {
-		setCallEnded(false)
+	const callOperator = () => {
+		console.log("Start call to operator: ", idToCall.current);	
 		const peer = new Peer({
 			initiator: true,
 			trickle: false,
 			stream: stream
 		})
+
 		peer.on("signal", (data) => {
-			socket.emit("callUser", {
-				userToCall: id,
+			socket.emit("callOperator", {
+				userToCall: idToCall.current,
 				signalData: data,
 				from: me
 			})
 		})
 		peer.on("stream", (stream) => {
-			console.log("callUser() ", {callEnded});
-			console.log("callUser() ", {callAccepted});
-			console.log("callUser() , stream ", {stream});
-			console.log("callUser() userVideo.current ", userVideo.current );
-			if(userVideo && userVideo.current){
+			if (userVideo && userVideo.current) {
 				userVideo.current.srcObject = stream
 			}
 		})
-		socket.on("callAccepted", (signal) => {
-			setCallAccepted(true)
-			peer.signal(signal)
+		socket.on("connectionAccepted", (signal) => {
+			kioskPeerRef.current.signal(signal)
+
+			setConnectionAccepted(true)
 		})
 		socket.on("callEnded", () => {
-			console.log("CALL Ended ");
+			//socket.off('connectionAccepted');
+			//operatorPeerRef.current.destroy()
 			setCallEnded(true);
 		})
 
-		connectionRef.current = peer
+		kioskPeerRef.current = peer
 	}
 
-	const answerCall = () => {
-		setReceivingCall(false)
-		setCallAccepted(true)
+	const restartCall = () => {
+		console.log("Restarting call")
 		setCallEnded(false)
-		const peer = new Peer({
-			initiator: false,
-			trickle: false,
-			stream: stream
-		})
-		console.log("answerCall() ", {callAccepted},{callEnded});
-		console.log("answerCall() ", {stream});
-		peer.on("signal", (data) => {
-			socket.emit("answerCall", { signal: data, to: caller })
-		})
-		peer.on("stream", (stream) => {
-			console.log("answerCall() on.stream() ", {stream});
-			console.log("answerCall() userVideo.current: ", userVideo.current);
-			if(userVideo && userVideo.current){
-				userVideo.current.srcObject = stream
-			}
-		})
-
-		peer.signal(callerSignal)
-		connectionRef.current = peer
-	}
-
-	const leaveCall = () => {
-		console.log("Entering to leaveCall()");
-		setCallEnded(true)
-		setCallAccepted(false)
-		//connectionRef.current.destroy()
-				socket.emit("callEnded", {
-					callerId: caller
-				});
 	}
 
 	const handleVideoDeviceChange = (e) => {
@@ -202,6 +191,38 @@ function App() {
 		setAudioDeviceId(device.deviceId);
 	};
 
+	//Exclusive Operator Methods
+	const answerCallFromKiosk = () => {
+		setReceivingCall(false)
+		setConnectionAccepted(true)
+		setCallEnded(false)
+		const peer = new Peer({
+			initiator: false,
+			trickle: false,
+			stream: stream
+		})
+		peer.on("signal", (data) => {
+			socket.emit("answerCall", { signal: data, to: caller })
+		})
+		peer.on("stream", (stream) => {
+			if (userVideo && userVideo.current) {
+				userVideo.current.srcObject = stream
+			}
+		})
+
+		peer.signal(callerSignal)
+		operatorPeerRef.current = peer
+	}
+
+	const leaveCall = () => {
+		console.log("Entering to leaveCall()");
+		//setCallEnded(true)
+		//operatorPeerRef.current.destroy()
+		socket.emit("callEnded", {
+			callerId: caller
+		});
+	}
+
 	return (
 		<>
 			<h1 style={{ textAlign: "center", color: '#fff' }}>FactoryZoom</h1>
@@ -210,53 +231,54 @@ function App() {
 					<div className="video">
 						{stream && <video playsInline muted ref={myVideo} autoPlay style={{ width: "300px" }} />}
 					</div>
+					{role === 'kiosk' && (!connectionAccepted) && (
+						<div>
+						<div className="caller">
+							<Button variant="contained" color="primary" onClick={callOperator}>
+								Connect with operator
+							</Button>
+						</div>
+						</div>
+					)
+
+					}
 					{
-						!callEnded && 
-					<div className="video">
-							<video playsInline ref={userVideo} autoPlay style={{ width: "300px" }} /> 
-					</div>
+						connectionAccepted &&
+						<div className="video">
+							<video playsInline ref={userVideo} autoPlay style={{ width: "300px" }} />
+						</div>
 					}
 				</div>
-				{role === 'kiosk' &&  (
-					<div className="myId">
-						<TextField
-							id="filled-basic"
-							label="ID to call"
-							variant="filled"
-							value={idToCall}
-							onChange={(e) => setIdToCall(e.target.value)}
-						/>
-						<div className="call-button">
-							{ (!callAccepted || callEnded) && (
-								<IconButton color="primary" aria-label="call" onClick={() => callUser(idToCall)}>
-									<PhoneIcon fontSize="large" />
-								</IconButton>
-							)}
-						</div>
-					</div> 
-				)}
-				{role === 'operator' &&  (
+				{role === 'operator' && (
 					<div className="myId">
 						<div className="call-button">
-							{callAccepted && !callEnded && (
+							{connectionAccepted && !callEnded && (
 								<Button variant="contained" color="secondary" onClick={leaveCall}>
 									End Call
 								</Button>
-							) }
+							)}
 						</div>
-					</div> 
-				)}				
+					</div>
+				)}
 				<div>
 					{receivingCall ? (
 						<div className="caller">
-							<h1>Call from Kiosk...</h1>
-							<Button variant="contained" color="primary" onClick={answerCall}>
-								Answer
+							<Button variant="contained" color="primary" onClick={answerCallFromKiosk}>
+								Connect kiosk
 							</Button>
 						</div>
 					) : null}
 				</div>
 			</div>
+			{(role === 'kiosk' && connectionAccepted && callEnded) && (
+				<div className="container">
+						<div className="caller">
+							<Button variant="contained" color="primary" onClick={restartCall}>
+								Call
+							</Button>
+						</div>
+				</div>
+			)}
 			<div>
 				{devices && (
 					<>
