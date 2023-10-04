@@ -44,6 +44,11 @@ io.on("connection", (socket) => {
 		console.log("Emit to all the new operator: ", operatorId);
 	})
 
+	socket.on("callStarted", (data) => {
+		console.log("callStarted");
+		io.to(operatorId).emit("callStarted", data)
+	})
+
 	if(operatorId !== null){
 		console.log("Emit updateOperatorId -> ", operatorId);
 		socket.emit("updateOperatorId", operatorId);

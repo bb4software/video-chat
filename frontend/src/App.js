@@ -24,7 +24,7 @@ const selectStyle = {
 const URL = process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:4000';
 const socket = io(URL, {
 	autoConnect: false
-  });
+});
 
 function App() {
 	const location = useLocation()
@@ -40,6 +40,7 @@ function App() {
 	const [callerSignal, setCallerSignal] = useState()
 	const [connectionAccepted, setConnectionAccepted] = useState(false)
 	const [callEnded, setCallEnded] = useState(true)
+	const [callStarted, setCallStarted] = useState(false)
 	const myVideo = useRef()
 	const userVideo = useRef()
 	const idToCall = useRef()
@@ -71,35 +72,37 @@ function App() {
 
 
 	useEffect(() => {
-		console.log("Checking role in useEffect() role: ", role, {callEnded}, {connectionAccepted});
+		console.log("Checking role in useEffect() role: ", role, { callStarted }, { connectionAccepted });
 
 		const setup = async () => {
 			listDevices().then((devices) => setDevices(devices));
 
-			const myStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true})
+			const myStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
 			const audioTrack = myStream.getAudioTracks()[0]
 			audioTrack.enabled = false
 
-			if(role === 'kiosk' && connectionAccepted){
+			if (role === 'kiosk' && connectionAccepted) {
 				const audioTrack = kioskPeerRef.current.streams[0].getAudioTracks()[0]
-				audioTrack.enabled = !callEnded
+				audioTrack.enabled = callStarted
+				console.log("kiok audio: ", audioTrack.enabled);
 			}
 
 			if(role === 'operator' && connectionAccepted){
 				const audioTrack = operatorPeerRef.current.streams[0].getAudioTracks()[0]
-				audioTrack.enabled = !callEnded
+				audioTrack.enabled = callStarted
 				console.log("Operator audio: ", audioTrack.enabled);
 			}
 
 			setStream(myStream)
 			myVideo.current.srcObject = myStream
-			
+
 			//Connect until we have the stream
 			socket.connect()
 
 			socket.on("updateOperatorId", (operatorId) => {
 				if (role === 'kiosk') {
 					idToCall.current = operatorId;
+					console.log("Update operatorId: ", operatorId);
 				}
 			});
 
@@ -117,6 +120,11 @@ function App() {
 				setReceivingCall(true)
 				setCaller(data.from)
 				setCallerSignal(data.signal)
+			})
+
+			socket.on("callStarted", (data) => {
+				console.log("Call started ", data);
+				setCallStarted(true)
 			})
 		}
 
@@ -137,10 +145,10 @@ function App() {
 			handleDeviceChange();
 		}
 
-	}, [videoDeviceId, audioDeviceId, role, receivingCall, callEnded, connectionAccepted])
+	}, [videoDeviceId, audioDeviceId, role, callStarted, connectionAccepted])
 
 	const callOperator = () => {
-		console.log("Start call to operator: ", idToCall.current);	
+		console.log("Start call to operator: ", idToCall.current);
 		const peer = new Peer({
 			initiator: true,
 			trickle: false,
@@ -167,7 +175,9 @@ function App() {
 		socket.on("callEnded", () => {
 			//socket.off('connectionAccepted');
 			//operatorPeerRef.current.destroy()
-			setCallEnded(true);
+			console.log("Call Ended")
+			setCallEnded(true)
+			setCallStarted(false)
 		})
 
 		kioskPeerRef.current = peer
@@ -175,7 +185,9 @@ function App() {
 
 	const restartCall = () => {
 		console.log("Restarting call")
-		setCallEnded(false)
+		//setCallEnded(false)
+		setCallStarted(true)
+		socket.emit("callStarted", { from: me })
 	}
 
 	const handleVideoDeviceChange = (e) => {
@@ -195,7 +207,7 @@ function App() {
 	const answerCallFromKiosk = () => {
 		setReceivingCall(false)
 		setConnectionAccepted(true)
-		setCallEnded(false)
+		setCallEnded(true)
 		const peer = new Peer({
 			initiator: false,
 			trickle: false,
@@ -216,7 +228,8 @@ function App() {
 
 	const leaveCall = () => {
 		console.log("Entering to leaveCall()");
-		//setCallEnded(true)
+		setCallEnded(true)
+		setCallStarted(false)
 		//operatorPeerRef.current.destroy()
 		socket.emit("callEnded", {
 			callerId: caller
@@ -225,58 +238,56 @@ function App() {
 
 	return (
 		<>
-			<h1 style={{ textAlign: "center", color: '#fff' }}>FactoryZoom</h1>
 			<div className="container">
 				<div className="video-container">
-					<div className="video">
-						{stream && <video playsInline muted ref={myVideo} autoPlay style={{ width: "300px" }} />}
-					</div>
-					{role === 'kiosk' && (!connectionAccepted) && (
-						<div>
-						<div className="caller">
-							<Button variant="contained" color="primary" onClick={callOperator}>
-								Connect with operator
-							</Button>
-						</div>
-						</div>
-					)
-
-					}
 					{
 						connectionAccepted &&
 						<div className="video">
-							<video playsInline ref={userVideo} autoPlay style={{ width: "300px" }} />
+							<video playsInline ref={userVideo} autoPlay style={{ width: "600px" }} />
 						</div>
 					}
-				</div>
-				{role === 'operator' && (
-					<div className="myId">
-						<div className="call-button">
-							{connectionAccepted && !callEnded && (
-								<Button variant="contained" color="secondary" onClick={leaveCall}>
-									End Call
-								</Button>
-							)}
-						</div>
+					<div className="video">
+						{stream && <video playsInline muted ref={myVideo} autoPlay style={{ width: "180px" }} />}
 					</div>
-				)}
-				<div>
-					{receivingCall ? (
+					{role === 'kiosk' && (!connectionAccepted) && (
+						<div>
+							<div className="caller">
+								<Button variant="contained" color="primary" onClick={callOperator}>
+									Connect with operator
+								</Button>
+							</div>
+						</div>
+					)
+					}
+				</div>
+
+			</div>
+			{(role === 'kiosk' && connectionAccepted && callEnded) && (
+				<div className="container">
+					<div className="caller">
+						<Button variant="contained" color="primary" onClick={restartCall}>
+							Call
+						</Button>
+					</div>
+				</div>
+			)}
+			{(role === 'operator') && (
+				<div className="container">
+					{(connectionAccepted && callStarted) && (
+						<div className="caller">
+							<Button variant="contained" color="secondary" onClick={leaveCall}>
+								End Call
+							</Button>
+						</div>
+
+					)}
+					{receivingCall && (
 						<div className="caller">
 							<Button variant="contained" color="primary" onClick={answerCallFromKiosk}>
 								Connect kiosk
 							</Button>
 						</div>
-					) : null}
-				</div>
-			</div>
-			{(role === 'kiosk' && connectionAccepted && callEnded) && (
-				<div className="container">
-						<div className="caller">
-							<Button variant="contained" color="primary" onClick={restartCall}>
-								Call
-							</Button>
-						</div>
+					)}
 				</div>
 			)}
 			<div>

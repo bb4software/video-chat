@@ -1,6 +1,6 @@
 .container {
 	display: grid;
-	grid-template-columns: 7fr 3fr;
+	/*grid-template-columns: 7fr 3fr; */
 }
 
 .myId {
@@ -27,11 +27,10 @@
 
 .video-container {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
+	/*grid-template-columns: 1fr 1fr; */
 	justify-content: center;
 	align-content: center;
-	margin-top: 5rem;
-	margin-left: 10rem;
+	margin-top: 2rem;
 }
 
 .caller {
