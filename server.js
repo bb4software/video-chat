@@ -21,9 +21,9 @@ io.on("connection", (socket) => {
 		socket.broadcast.emit("callEnded")
 	})
 
-	socket.on("callOperator", (data) => {
-		console.log("Receiving callOperator() ", { signal: data.signalData.type, from: data.from, name: data.name })
-		io.to(data.userToCall).emit("callFromKiosk", { signal: data.signalData, from: data.from, name: data.name })
+	socket.on("connectWithOperator", (data) => {
+		console.log("Receiving connectWithOperator() ", { signal: data.signalData.type, from: data.from, name: data.name })
+		io.to(data.userToCall).emit("connectionFromOperator", { signal: data.signalData, from: data.from, name: data.name })
 	})
 
 	socket.on("answerCall", (data) => {
@@ -34,6 +34,11 @@ io.on("connection", (socket) => {
 	socket.on("callEnded", (data) => {
 		console.log("socket.on.callEnded ", data);
 		io.to(data.callerId).emit("callEnded", data)
+	})
+
+	socket.on("callAccepted", (data) => {
+		console.log("socket.on.callAccepted ", data);
+		io.to(data.callerId).emit("callAccepted", data)
 	})
 
 	socket.on("setOperatorId", (data) => {
