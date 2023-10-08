@@ -35,7 +35,7 @@ function App() {
 	const [devices, setDevices] = React.useState(null)
 	const [me, setMe] = useState("")
 	const [stream, setStream] = useState()
-	const [receivingCall, setReceivingCall] = useState(false)
+	const [incomingKioskConnection, setIncomingKioskConnection] = useState(false)
 	const [caller, setCaller] = useState("")
 	const [callerSignal, setCallerSignal] = useState()
 	const [connectionAccepted, setConnectionAccepted] = useState(false)
@@ -116,8 +116,8 @@ function App() {
 				}
 			})
 
-			socket.on("callFromKiosk", (data) => {
-				setReceivingCall(true)
+			socket.on("connectionFromOperator", (data) => {
+				setIncomingKioskConnection(true)
 				setCaller(data.from)
 				setCallerSignal(data.signal)
 			})
@@ -147,8 +147,8 @@ function App() {
 
 	}, [videoDeviceId, audioDeviceId, role, callStarted, connectionAccepted])
 
-	const callOperator = () => {
-		console.log("Start call to operator: ", idToCall.current);
+	const connectWithOperator = () => {
+		console.log("Starting connection with operator: ", idToCall.current);
 		const peer = new Peer({
 			initiator: true,
 			trickle: false,
@@ -156,7 +156,7 @@ function App() {
 		})
 
 		peer.on("signal", (data) => {
-			socket.emit("callOperator", {
+			socket.emit("connectWithOperator", {
 				userToCall: idToCall.current,
 				signalData: data,
 				from: me
@@ -204,8 +204,8 @@ function App() {
 	};
 
 	//Exclusive Operator Methods
-	const answerCallFromKiosk = () => {
-		setReceivingCall(false)
+	const connectWithKiosk = () => {
+		setIncomingKioskConnection(false)
 		setConnectionAccepted(true)
 		setCallEnded(true)
 		const peer = new Peer({
@@ -243,7 +243,7 @@ function App() {
 					{
 						connectionAccepted &&
 						<div className="video">
-							<video playsInline ref={userVideo} autoPlay style={{ width: "600px" }} />
+							<video playsInline ref={userVideo} autoPlay style={{ width: "320px" }} />
 						</div>
 					}
 					<div className="video">
@@ -252,7 +252,7 @@ function App() {
 					{role === 'kiosk' && (!connectionAccepted) && (
 						<div>
 							<div className="caller">
-								<Button variant="contained" color="primary" onClick={callOperator}>
+								<Button variant="contained" color="primary" onClick={connectWithOperator}>
 									Connect with operator
 								</Button>
 							</div>
@@ -281,9 +281,9 @@ function App() {
 						</div>
 
 					)}
-					{receivingCall && (
+					{incomingKioskConnection && (
 						<div className="caller">
-							<Button variant="contained" color="primary" onClick={answerCallFromKiosk}>
+							<Button variant="contained" color="primary" onClick={connectWithKiosk}>
 								Connect kiosk
 							</Button>
 						</div>
