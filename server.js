@@ -23,7 +23,7 @@ io.on("connection", (socket) => {
 
 	socket.on("connectWithOperator", (data) => {
 		console.log("Receiving connectWithOperator() ", { signal: data.signalData.type, from: data.from, name: data.name })
-		io.to(data.userToCall).emit("connectionFromOperator", { signal: data.signalData, from: data.from, name: data.name })
+		io.to(data.userToCall).emit("connectionFromKiosk", { signal: data.signalData, from: data.from, name: data.name })
 	})
 
 	socket.on("answerCall", (data) => {

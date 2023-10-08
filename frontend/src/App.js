@@ -42,9 +42,10 @@ function App() {
 	const [callStarted, setCallStarted] = useState(false)
 	const [callAccepted, setCallAccepted] = useState(false)
 	const socketConnectedRef = useRef(false)
-	const myVideo = useRef()
-	const userVideo = useRef()
-	const idToCall = useRef()
+	const myVideoRef = useRef()
+	const callerVideoRef1 = useRef()
+	const operatorVideoRef = useRef()
+	const operatorIdRef = useRef()
 	const operatorPeerRef = useRef()
 	const kioskPeerRef = useRef()
 
@@ -80,7 +81,7 @@ function App() {
 				audio: audioDeviceId ? { deviceId: audioDeviceId } : true
 			}).then((stream) => {
 				setStream(stream)
-				myVideo.current.srcObject = stream
+				myVideoRef.current.srcObject = stream
 
 				stream.getAudioTracks().forEach(track => {
 					track.enabled = false
@@ -92,7 +93,7 @@ function App() {
 
 		navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
 			setStream(stream)
-			myVideo.current.srcObject = stream
+			myVideoRef.current.srcObject = stream
 			stream.getAudioTracks().forEach(track => {
 				track.enabled = false
 			})
@@ -127,13 +128,6 @@ function App() {
 
 				socket.connect()
 
-				socket.on("updateOperatorId", (operatorId) => {
-					if (role === 'kiosk') {
-						idToCall.current = operatorId;
-						console.log("Update operatorId: ", operatorId);
-					}
-				});
-
 				socket.on("me", (id) => {
 					setMe(id)
 
@@ -144,16 +138,24 @@ function App() {
 					}
 				})
 
-				socket.on("connectionFromOperator", (data) => {
-					setIncomingKioskConnection(true)
-					setCaller(data.from)
-					setCallerSignal(data.signal)
-				})
+				if (role === 'kiosk') {
+					socket.on("updateOperatorId", (operatorId) => {
+						console.log("Update operatorId: ", operatorId);
+						operatorIdRef.current = operatorId;
+					});
+				} else {
+					socket.on("connectionFromKiosk", (data) => {
+						console.log("connectionFromKiosk()");
+						setIncomingKioskConnection(true)
+						setCaller(data.from)
+						setCallerSignal(data.signal)
+					})
 
-				socket.on("callStarted", (data) => {
-					console.log("Call started ", data)
-					setCallStarted(true)
-				})
+					socket.on("callStarted", (data) => {
+						console.log("Call started ", data)
+						setCallStarted(true)
+					})
+				}
 
 				socketConnectedRef.current = true
 			}
@@ -164,7 +166,7 @@ function App() {
 	}, [role, callStarted, callAccepted, connectionAccepted])
 
 	const connectWithOperator = () => {
-		console.log("Starting connection with operator: ", idToCall.current);
+		console.log("Starting connection with operator: ", operatorIdRef.current);
 		const peer = new Peer({
 			initiator: true,
 			trickle: false,
@@ -173,14 +175,19 @@ function App() {
 
 		peer.on("signal", (data) => {
 			socket.emit("connectWithOperator", {
-				userToCall: idToCall.current,
+				userToCall: operatorIdRef.current,
 				signalData: data,
 				from: me
 			})
 		})
 		peer.on("stream", (stream) => {
-			if (userVideo && userVideo.current) {
-				userVideo.current.srcObject = stream
+			/*
+			if (callerVideoRef1 && callerVideoRef1.current) {
+				callerVideoRef1.current.srcObject = stream
+			}
+			*/
+			if (operatorVideoRef && operatorVideoRef.current) {
+				operatorVideoRef.current.srcObject = stream
 			}
 		})
 		socket.on("connectionAccepted", (signal) => {
@@ -237,10 +244,12 @@ function App() {
 			socket.emit("answerCall", { signal: data, to: caller })
 		})
 		peer.on("stream", (stream) => {
-			if (userVideo && userVideo.current) {
-				userVideo.current.srcObject = stream
+			if (callerVideoRef1 && callerVideoRef1.current) {
+				callerVideoRef1.current.srcObject = stream
 			}
 		})
+
+		console.log("--------- caller signal -----", {callerSignal})
 
 		peer.signal(callerSignal)
 		operatorPeerRef.current = peer
@@ -269,14 +278,18 @@ function App() {
 		<>
 			<div className="container">
 				<div className="video-container">
-					{
-						connectionAccepted &&
+					{role === 'kiosk' && connectionAccepted && (
 						<div className="video">
-							<video playsInline ref={userVideo} autoPlay style={{ width: "320px" }} />
+							<video playsInline ref={operatorVideoRef} autoPlay style={{ width: "480px" }} />
 						</div>
-					}
+					)}
+					{role === 'operator' && connectionAccepted && (
+						<div className="video">
+							<video playsInline ref={callerVideoRef1} autoPlay style={{ width: "280px" }} />
+						</div>
+					)}
 					<div className="video">
-						{stream && <video playsInline muted ref={myVideo} autoPlay style={{ width: "180px" }} />}
+						{stream && <video playsInline muted ref={myVideoRef} autoPlay style={{ width: "180px" }} />}
 					</div>
 					{role === 'kiosk' && (!connectionAccepted) && (
 						<div>
