@@ -39,8 +39,9 @@ function App() {
 	const [caller, setCaller] = useState("")
 	const [callerSignal, setCallerSignal] = useState()
 	const [connectionAccepted, setConnectionAccepted] = useState(false)
-	const [callEnded, setCallEnded] = useState(true)
 	const [callStarted, setCallStarted] = useState(false)
+	const [callAccepted, setCallAccepted] = useState(false)
+	const socketConnectedRef = useRef(false)
 	const myVideo = useRef()
 	const userVideo = useRef()
 	const idToCall = useRef()
@@ -72,64 +73,6 @@ function App() {
 
 
 	useEffect(() => {
-		console.log("Checking role in useEffect() role: ", role, { callStarted }, { connectionAccepted });
-
-		const setup = async () => {
-			listDevices().then((devices) => setDevices(devices));
-
-			const myStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-			const audioTrack = myStream.getAudioTracks()[0]
-			audioTrack.enabled = false
-
-			if (role === 'kiosk' && connectionAccepted) {
-				const audioTrack = kioskPeerRef.current.streams[0].getAudioTracks()[0]
-				audioTrack.enabled = callStarted
-				console.log("kiok audio: ", audioTrack.enabled);
-			}
-
-			if(role === 'operator' && connectionAccepted){
-				const audioTrack = operatorPeerRef.current.streams[0].getAudioTracks()[0]
-				audioTrack.enabled = callStarted
-				console.log("Operator audio: ", audioTrack.enabled);
-			}
-
-			setStream(myStream)
-			myVideo.current.srcObject = myStream
-
-			//Connect until we have the stream
-			socket.connect()
-
-			socket.on("updateOperatorId", (operatorId) => {
-				if (role === 'kiosk') {
-					idToCall.current = operatorId;
-					console.log("Update operatorId: ", operatorId);
-				}
-			});
-
-			socket.on("me", (id) => {
-				setMe(id)
-
-				if (role === 'operator') {
-					socket.emit("setOperatorId", {
-						operatorId: id,
-					});
-				}
-			})
-
-			socket.on("connectionFromOperator", (data) => {
-				setIncomingKioskConnection(true)
-				setCaller(data.from)
-				setCallerSignal(data.signal)
-			})
-
-			socket.on("callStarted", (data) => {
-				console.log("Call started ", data);
-				setCallStarted(true)
-			})
-		}
-
-		setup()
-
 		const handleDeviceChange = () => {
 			console.log("Calling handleDeviceChange() ", audioDeviceId, videoDeviceId);
 			navigator.mediaDevices.getUserMedia({
@@ -138,14 +81,87 @@ function App() {
 			}).then((stream) => {
 				setStream(stream)
 				myVideo.current.srcObject = stream
+
+				stream.getAudioTracks().forEach(track => {
+					track.enabled = false
+				})
 			})
 		};
+
+		listDevices().then((devices) => setDevices(devices));
+
+		navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
+			setStream(stream)
+			myVideo.current.srcObject = stream
+			stream.getAudioTracks().forEach(track => {
+				track.enabled = false
+			})
+		})
 
 		if (videoDeviceId || audioDeviceId) {
 			handleDeviceChange();
 		}
 
-	}, [videoDeviceId, audioDeviceId, role, callStarted, connectionAccepted])
+		console.clear()
+	}, [videoDeviceId, audioDeviceId]);
+
+	useEffect(() => {
+		console.log("Checking role in useEffect() role: ", role, { callStarted }, { callAccepted });
+
+		const setup = async () => {
+
+			if (role === 'kiosk' && connectionAccepted) {
+				const audioTrack = kioskPeerRef.current.streams[0].getAudioTracks()[0]
+				audioTrack.enabled = callAccepted
+				console.log("kiok audio: ", audioTrack.enabled);
+			}
+
+			if (role === 'operator' && connectionAccepted) {
+				const audioTrack = operatorPeerRef.current.streams[0].getAudioTracks()[0]
+				audioTrack.enabled = callAccepted
+				console.log("Operator audio: ", audioTrack.enabled);
+			}
+
+			//Connect until we have the stream
+			if (socketConnectedRef.current === false) {
+
+				socket.connect()
+
+				socket.on("updateOperatorId", (operatorId) => {
+					if (role === 'kiosk') {
+						idToCall.current = operatorId;
+						console.log("Update operatorId: ", operatorId);
+					}
+				});
+
+				socket.on("me", (id) => {
+					setMe(id)
+
+					if (role === 'operator') {
+						socket.emit("setOperatorId", {
+							operatorId: id,
+						});
+					}
+				})
+
+				socket.on("connectionFromOperator", (data) => {
+					setIncomingKioskConnection(true)
+					setCaller(data.from)
+					setCallerSignal(data.signal)
+				})
+
+				socket.on("callStarted", (data) => {
+					console.log("Call started ", data)
+					setCallStarted(true)
+				})
+
+				socketConnectedRef.current = true
+			}
+		}
+
+		setup()
+
+	}, [role, callStarted, callAccepted, connectionAccepted])
 
 	const connectWithOperator = () => {
 		console.log("Starting connection with operator: ", idToCall.current);
@@ -176,16 +192,21 @@ function App() {
 			//socket.off('connectionAccepted');
 			//operatorPeerRef.current.destroy()
 			console.log("Call Ended")
-			setCallEnded(true)
 			setCallStarted(false)
+			setCallAccepted(false)
+		})
+		socket.on("callAccepted", () => {
+			//socket.off('connectionAccepted');
+			//operatorPeerRef.current.destroy()
+			console.log("Call Accepted")
+			setCallAccepted(true)
 		})
 
 		kioskPeerRef.current = peer
 	}
 
-	const restartCall = () => {
-		console.log("Restarting call")
-		//setCallEnded(false)
+	const callOperator = () => {
+		console.log("Starting call to operator")
 		setCallStarted(true)
 		socket.emit("callStarted", { from: me })
 	}
@@ -207,7 +228,6 @@ function App() {
 	const connectWithKiosk = () => {
 		setIncomingKioskConnection(false)
 		setConnectionAccepted(true)
-		setCallEnded(true)
 		const peer = new Peer({
 			initiator: false,
 			trickle: false,
@@ -228,10 +248,19 @@ function App() {
 
 	const leaveCall = () => {
 		console.log("Entering to leaveCall()");
-		setCallEnded(true)
 		setCallStarted(false)
+		setCallAccepted(false)
 		//operatorPeerRef.current.destroy()
 		socket.emit("callEnded", {
+			callerId: caller
+		});
+	}
+
+	const acceptCall = () => {
+		console.log("Entering to acceptCall()");
+		setCallAccepted(true)
+		//operatorPeerRef.current.destroy()
+		socket.emit("callAccepted", {
 			callerId: caller
 		});
 	}
@@ -262,10 +291,10 @@ function App() {
 				</div>
 
 			</div>
-			{(role === 'kiosk' && connectionAccepted && callEnded) && (
+			{(role === 'kiosk' && connectionAccepted && !callStarted) && (
 				<div className="container">
 					<div className="caller">
-						<Button variant="contained" color="primary" onClick={restartCall}>
+						<Button variant="contained" color="primary" onClick={callOperator}>
 							Call
 						</Button>
 					</div>
@@ -273,13 +302,19 @@ function App() {
 			)}
 			{(role === 'operator') && (
 				<div className="container">
-					{(connectionAccepted && callStarted) && (
+					{(connectionAccepted && callStarted && !callAccepted) && (
+						<div className="caller">
+							<Button variant="contained" color="secondary" onClick={acceptCall}>
+								Accept Call
+							</Button>
+						</div>
+					)}
+					{(connectionAccepted && callAccepted) && (
 						<div className="caller">
 							<Button variant="contained" color="secondary" onClick={leaveCall}>
 								End Call
 							</Button>
 						</div>
-
 					)}
 					{incomingKioskConnection && (
 						<div className="caller">
