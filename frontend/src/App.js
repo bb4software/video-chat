@@ -26,9 +26,29 @@ const socket = io(URL, {
 	autoConnect: false
 });
 
+const KioskVideo = ({kiosk, stream }) => {
+	const localVideo = React.createRef();
+  
+	// localVideo.current is null on first render
+	// localVideo.current.srcObject = stream;
+  
+	useEffect(() => {
+	  // Let's update the srcObject only after the ref has been set
+	  // and then every time the stream prop updates
+	  if (localVideo.current) localVideo.current.srcObject = stream;
+	}, [stream, localVideo]);
+  
+	return (
+	  <div className="video" key={kiosk}>
+		<video style={{ width: "280px" }} ref={localVideo} autoPlay playsInline />
+	  </div>
+	);
+  };
+
 function App() {
 	const location = useLocation()
 	const role = location.pathname === '/operator' ? 'operator' : 'kiosk'
+	//const kioskVideos = new Map()
 
 	const [videoDeviceId, setVideoDeviceId] = React.useState(null)
 	const [audioDeviceId, setAudioDeviceId] = React.useState(null)
@@ -41,9 +61,11 @@ function App() {
 	const [connectionAccepted, setConnectionAccepted] = useState(false)
 	const [callStarted, setCallStarted] = useState(false)
 	const [callAccepted, setCallAccepted] = useState(false)
+	const [kioskVideos, setKioskVideos] = useState(new Map())
 	const socketConnectedRef = useRef(false)
 	const myVideoRef = useRef()
-	const callerVideoRef1 = useRef()
+	//const callerVideoRef1 = useRef()
+	//const kiosksVideoRef = useRef(new Map())
 	const operatorVideoRef = useRef()
 	const operatorIdRef = useRef()
 	const operatorPeerRef = useRef()
@@ -130,6 +152,7 @@ function App() {
 
 				socket.on("me", (id) => {
 					setMe(id)
+					console.log("ME: ", id)
 
 					if (role === 'operator') {
 						socket.emit("setOperatorId", {
@@ -145,7 +168,7 @@ function App() {
 					});
 				} else {
 					socket.on("connectionFromKiosk", (data) => {
-						console.log("connectionFromKiosk()");
+						console.log("connectionFromKiosk() -> from", data.from);
 						setIncomingKioskConnection(true)
 						setCaller(data.from)
 						setCallerSignal(data.signal)
@@ -241,12 +264,18 @@ function App() {
 			stream: stream
 		})
 		peer.on("signal", (data) => {
+			console.log("SIGNAL: caller", caller)
 			socket.emit("answerCall", { signal: data, to: caller })
 		})
-		peer.on("stream", (stream) => {
+		peer.on("stream", (kioskStream) => {
+			const newList = new Map(kioskVideos);
+			newList.set(caller, kioskStream)
+
+			setKioskVideos(newList)
+			/*
 			if (callerVideoRef1 && callerVideoRef1.current) {
 				callerVideoRef1.current.srcObject = stream
-			}
+			} */
 		})
 
 		console.log("--------- caller signal -----", {callerSignal})
@@ -283,11 +312,19 @@ function App() {
 							<video playsInline ref={operatorVideoRef} autoPlay style={{ width: "480px" }} />
 						</div>
 					)}
-					{role === 'operator' && connectionAccepted && (
-						<div className="video">
-							<video playsInline ref={callerVideoRef1} autoPlay style={{ width: "280px" }} />
-						</div>
-					)}
+					{ /*role === 'operator' && connectionAccepted &&  
+					
+						[...kioskVideos].map(([kiosk, stream]) => {
+						return (<div className="video" key={kiosk}>
+							<video playsInline ref={video => video.srcObject = stream} autoPlay style={{ width: "280px" }} />
+						</div>) }
+						) */
+					}
+					{
+						[...kioskVideos].map(([kiosk, stream]) => <KioskVideo key={kiosk} stream={stream}></KioskVideo> ) 
+
+					}
+					
 					<div className="video">
 						{stream && <video playsInline muted ref={myVideoRef} autoPlay style={{ width: "180px" }} />}
 					</div>
