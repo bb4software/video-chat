@@ -26,11 +26,19 @@
 }
 
 .video-container {
-	display: grid;
-	/*grid-template-columns: 1fr 1fr; */
+	display: flex;
+	flex-wrap: wrap;
 	justify-content: center;
-	align-content: center;
+	align-items: center;
 	margin-top: 2rem;
+}
+
+.video {
+	padding: 0.5rem;
+}
+
+.video-id {
+	font-size: small;
 }
 
 .caller {

@@ -39,8 +39,9 @@ const KioskVideo = ({kiosk, stream }) => {
 	}, [stream, localVideo]);
   
 	return (
-	  <div className="video" key={kiosk}>
+	  <div className={"video video-" + kiosk} key={kiosk}>
 		<video style={{ width: "280px" }} ref={localVideo} autoPlay playsInline />
+		<div className="video-id">{kiosk}</div>
 	  </div>
 	);
   };
@@ -48,7 +49,6 @@ const KioskVideo = ({kiosk, stream }) => {
 function App() {
 	const location = useLocation()
 	const role = location.pathname === '/operator' ? 'operator' : 'kiosk'
-	//const kioskVideos = new Map()
 
 	const [videoDeviceId, setVideoDeviceId] = React.useState(null)
 	const [audioDeviceId, setAudioDeviceId] = React.useState(null)
@@ -64,8 +64,6 @@ function App() {
 	const [kioskVideos, setKioskVideos] = useState(new Map())
 	const socketConnectedRef = useRef(false)
 	const myVideoRef = useRef()
-	//const callerVideoRef1 = useRef()
-	//const kiosksVideoRef = useRef(new Map())
 	const operatorVideoRef = useRef()
 	const operatorIdRef = useRef()
 	const operatorPeerRef = useRef()
@@ -204,16 +202,12 @@ function App() {
 			})
 		})
 		peer.on("stream", (stream) => {
-			/*
-			if (callerVideoRef1 && callerVideoRef1.current) {
-				callerVideoRef1.current.srcObject = stream
-			}
-			*/
 			if (operatorVideoRef && operatorVideoRef.current) {
 				operatorVideoRef.current.srcObject = stream
 			}
 		})
 		socket.on("connectionAccepted", (signal) => {
+			console.log("connectionAccepted!");
 			kioskPeerRef.current.signal(signal)
 
 			setConnectionAccepted(true)
@@ -264,7 +258,6 @@ function App() {
 			stream: stream
 		})
 		peer.on("signal", (data) => {
-			console.log("SIGNAL: caller", caller)
 			socket.emit("answerCall", { signal: data, to: caller })
 		})
 		peer.on("stream", (kioskStream) => {
@@ -277,8 +270,6 @@ function App() {
 				callerVideoRef1.current.srcObject = stream
 			} */
 		})
-
-		console.log("--------- caller signal -----", {callerSignal})
 
 		peer.signal(callerSignal)
 		operatorPeerRef.current = peer
@@ -321,10 +312,15 @@ function App() {
 						) */
 					}
 					{
-						[...kioskVideos].map(([kiosk, stream]) => <KioskVideo key={kiosk} stream={stream}></KioskVideo> ) 
+						[...kioskVideos].map(([key, stream]) => {
+							console.log("KEY: ", key);
+						return <KioskVideo kiosk={key} key={key} stream={stream}>{key}</KioskVideo>
+					} ) 
 
 					}
 					
+				</div>
+				<div className="video-container">
 					<div className="video">
 						{stream && <video playsInline muted ref={myVideoRef} autoPlay style={{ width: "180px" }} />}
 					</div>
